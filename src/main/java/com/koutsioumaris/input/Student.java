@@ -4,19 +4,19 @@ import com.koutsioumaris.annotations.*;
 
 import java.util.List;
 
-@Database(name="UnipiDB", dbType ="DERBY")
+@Database(name="UnipiDB", dbType ="sqlite")
 @Table(name="Student")
 public class Student {
     @PrimaryKey
-    @Field(name="AM",type="Text")
+    @DBField(name="AM",type="Text")
     String AM;
-    @Field(name="Email",type="Text")
+    @DBField(name="Email",type="Text")
     String email;
-    @Field(name="Year",type="Integer")
+    @DBField(name="Year",type="Integer")
     int yearOfStudies;
-    @Field(name="FullName",type="Text")
+    @DBField(name="FullName",type="Text")
     String fullName;
-    @Field(name="PostGraduate",type="Boolean")
+    @DBField(name="PostGraduate",type="Boolean")
     boolean postGraduate;
 
     //Για τη μέθοδο αυτή μπορείτε να δοκιμάστε να επιστρέφετε List<Student>
