@@ -1,6 +1,6 @@
 package com.koutsioumaris.DB;
 
-import com.koutsioumaris.main.Main;
+import com.koutsioumaris.Application.Main;
 
 import java.sql.*;
 import java.util.logging.Level;
