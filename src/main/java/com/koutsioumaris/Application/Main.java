@@ -6,6 +6,6 @@ public class Main {
 
     public static void main(String[] args) {
         InjectionService injectionService = new InjectionService(Student.class);
-        injectionService.executeDBMethod();
+        injectionService.createOutputClass();
     }
 }
