@@ -3,6 +3,7 @@ package com.koutsioumaris.input;
 import com.koutsioumaris.annotations.*;
 
 import java.util.List;
+import java.util.Objects;
 
 @Database(name="UnipiDB", dbType ="sqlite")
 @Table(name="Student")
@@ -26,7 +27,7 @@ public class Student {
     }
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν
     @DBMethod(type="DeleteOne")
-    public int deleteStudents(String AM){
+    public int deleteStudents(@Param(name="AM") String AM){
         return 0;
     }
 }

@@ -11,26 +11,30 @@ import java.util.Arrays;
 
 public class InjectionService {
 
-    Database dbAnnotation = null;
-    Table tableAnnotation = null;
-    ArrayList<DBField> fieldsAnnotation = new ArrayList<>();
-    PrimaryKey primaryKeyAnnotation = null;
-    Method[] methods = null;
+    private Database dbAnnotation = null;
+    private Table tableAnnotation = null;
+    private ArrayList<DBField> fieldsAnnotation = new ArrayList<>();
+    private PrimaryKey primaryKeyAnnotation = null;
+    private Method[] methods = null;
+    private Field[] fields = null;
+    private Class c = null;
 
     public InjectionService(Class<?>  c) {
-        dbAnnotation = this.getDatabaseAnnotation(c);
-        tableAnnotation = this.getTableAnnotation(c);
-        fieldsAnnotation = this.getDBFieldAnnotation(c);
-        primaryKeyAnnotation = this.getPrimaryKeyAnnotation(c);
-        methods = this.getMethods(c);
+        this.dbAnnotation = getDatabaseAnnotation(c);
+        this.tableAnnotation = getTableAnnotation(c);
+        this.fieldsAnnotation = getDBFieldAnnotation(c);
+        this.primaryKeyAnnotation = getPrimaryKeyAnnotation(c);
+        this.methods = getMethods(c);
+        this.fields = getFields(c);
+        this.c = c;
     }
 
     private Database getDatabaseAnnotation(Class<?> c) {
-        return c.getAnnotation(Database.class);
+        return c.getDeclaredAnnotation(Database.class);
     }
 
     private Table getTableAnnotation(Class<?> c) {
-        return c.getAnnotation(Table.class);
+        return c.getDeclaredAnnotation(Table.class);
     }
 
     private PrimaryKey getPrimaryKeyAnnotation(Class<?> c) {
@@ -51,8 +55,12 @@ public class InjectionService {
         return fieldAnnotations;
     }
 
+    private Field[] getFields(Class<?> c) {
+        return c.getDeclaredFields();
+    }
+
     private Method[] getMethods(Class<?> c) {
-         return c.getMethods();
+         return c.getDeclaredMethods();
     }
 
     public void executeDBMethod() {
@@ -66,4 +74,5 @@ public class InjectionService {
         //Parameter[] parameters = method.getParameters();
         //Arrays.stream(parameters).forEach(parameter -> DBMethodImpl.implementation(parameter.getName()));
     }
+
 }
