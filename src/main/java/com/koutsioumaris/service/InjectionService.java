@@ -8,13 +8,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.stream.Stream;
-
-import javax.tools.JavaCompiler;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.ToolProvider;
-import javax.tools.JavaFileObject;
-
+import java.util.Iterator;
+import java.util.List;
 
 public class InjectionService {
 
@@ -85,12 +80,61 @@ public class InjectionService {
     public String createOutputClass() {
         StringBuilder builder = new StringBuilder();
 
+        buildClass(builder); //build class
+        buildFields(builder);
+
+        //build methods-----------------------
+        Arrays.stream(methods).forEach(method -> {
+            String methodModifier = Modifier.toString(method.getModifiers()); //e.g. public
+            String methodType = method.getGenericReturnType().toString(); //e.g. int or java.util.List<java.lang.String>
+            //System.out.println(method.getReturnType().getSimpleName()); //e.g. int or List
+            String methodName = method.getName(); //e.g. getAllStudents
+
+            List<String> parametersList = Arrays.stream(method.getParameters())
+                    .map(parameter -> {
+                        String parameterType = parameter.getType().getSimpleName(); //e.g. String. We assume only primitive types are used.
+                        String parameterName = null;
+
+                        Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
+                        if(paramAnnotation != null) {
+                            parameterName = paramAnnotation.name(); //returns value of "name" in "@Param" (e.g. AM)
+                        }
+                        else { //if parameter in not declared with @Param
+                            parameterName = parameter.getName(); //returns name of parameter like "arg0" , "arg1" etc.
+                        }
+                       // builder.append(parameterType).append(" ").append(parameterName).append(" ");
+                        return parameterType+" "+parameterName;
+                    }).toList();
+            builder.append(methodModifier).append(" ").append(methodType).append(" ").append(methodName).append(" (");
+
+            Iterator<String> iterator = parametersList.iterator(); //create list iterator
+            parametersList.forEach(parameter -> {
+                builder.append(parameter);
+
+                iterator.next(); //move to the next element
+                if (iterator.hasNext()) { //if this is not the last parameter
+                    builder.append(", ");
+                }
+            });
+            builder.append(") {\n");
+        });
+
+
+        //inside method--------------------------
+
+
+
+        System.out.println(builder);
+        return null;
+    }
+
+    private void buildClass(StringBuilder builder) {
         String classModifiers = Modifier.toString(c.getModifiers()); //for "public abstract" class e.g. it gets "public abstract"
         String className = c.getSimpleName(); //class name (e.g. "Student")
         String superclassSimpleName = c.getSuperclass().getSimpleName(); //"Object" if it does not extend a class
         String superclassName = c.getSuperclass().getName(); //"java.lang.Object" if it does not extend a class
 
-        builder.append(classModifiers+" "+className+" ");
+        builder.append(classModifiers+" class "+className+" ");
         if (!superclassName.equalsIgnoreCase("java.lang.Object")) { //so it does extend a class other than Object
             builder.append("extends "+superclassSimpleName+ " ");
         }
@@ -108,9 +152,19 @@ public class InjectionService {
             }
         }
 
-        builder.append(" {");
-        System.out.println(builder);
-        return null;
+        builder.append(" {\n");
+    }
+
+    private void buildFields(StringBuilder builder) {
+        Arrays.stream(fields).forEach(field -> {
+            String fieldModifier = Modifier.toString(field.getModifiers()); //e.g "private"
+            String fieldType = field.getType().getSimpleName(); //e.g. "String"
+            String fieldName = field.getName(); //e.g. "AM"
+
+            builder.append(fieldModifier).append(" ").append(fieldType).append(" ").append(fieldName).append(";");
+            builder.append("\n");
+        });
+        builder.append("\n");
     }
 
     public void reflectionTests() {
