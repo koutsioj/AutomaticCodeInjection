@@ -1,6 +1,5 @@
 package com.koutsioumaris.service;
 
-import com.koutsioumaris.DB.DBActions;
 import com.koutsioumaris.annotations.*;
 
 import java.lang.reflect.Field;
@@ -8,27 +7,28 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class InjectionService {
 
-    private Database dbAnnotation = null;
-    private Table tableAnnotation = null;
-    private ArrayList<DBField> fieldsAnnotation = new ArrayList<>();
-    private PrimaryKey primaryKeyAnnotation = null;
-    private Method[] methods = null;
-    private Field[] fields = null;
-    private Class c = null;
+    private final Class<?> c;
+    private final Method[] methods;
+    private final Field[] fields;
+    private final Database dbAnnotation;
+    private final Table tableAnnotation;
+    private final ArrayList<DBField> fieldsAnnotations;
+    private final String primaryKey;
+
 
     public InjectionService(Class<?>  c) {
-        this.dbAnnotation = getDatabaseAnnotation(c);
-        this.tableAnnotation = getTableAnnotation(c);
-        this.fieldsAnnotation = getDBFieldAnnotation(c);
-        this.primaryKeyAnnotation = getPrimaryKeyAnnotation(c);
+        this.c = c;
         this.methods = getMethods(c);
         this.fields = getFields(c);
-        this.c = c;
+        this.dbAnnotation = getDatabaseAnnotation(c);
+        this.tableAnnotation = getTableAnnotation(c);
+        this.fieldsAnnotations = getDBFieldAnnotation();
+        this.primaryKey = getPrimaryKey();
     }
 
     private Database getDatabaseAnnotation(Class<?> c) {
@@ -39,13 +39,18 @@ public class InjectionService {
         return c.getDeclaredAnnotation(Table.class);
     }
 
-    private PrimaryKey getPrimaryKeyAnnotation(Class<?> c) {
-        return c.getDeclaredAnnotation(PrimaryKey.class);
+    private String getPrimaryKey() {
+        for (Field field: fields) {
+            PrimaryKey primaryKey = field.getAnnotation(PrimaryKey.class);
+            if (primaryKey != null) {
+                return field.getAnnotation(DBField.class).name(); //get the name value of the DBfield that is the primary key
+            }
+        }
+        return null;
     }
 
-    private ArrayList<DBField> getDBFieldAnnotation(Class<?> c) {
+    private ArrayList<DBField> getDBFieldAnnotation() {
         ArrayList<DBField> fieldAnnotations = new ArrayList<>();
-        Field[] fields = c.getDeclaredFields();
 
         Arrays.stream(fields).forEach(field -> {
             DBField dbField = field.getAnnotation(DBField.class);
@@ -65,90 +70,158 @@ public class InjectionService {
          return c.getDeclaredMethods();
     }
 
-    public void executeDBMethod() {
-        Arrays.stream(methods).forEach(method -> { //for each method
-            DBMethod dbMethodAnnotation = method.getDeclaredAnnotation(DBMethod.class);
-            if ((dbMethodAnnotation != null) && (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll"))) {
-                ArrayList<String> resultList = DBActions.selectAll(dbAnnotation, tableAnnotation, fieldsAnnotation);
-                System.out.println("got resultList : "+resultList);
-            }
-        });
-        //Parameter[] parameters = method.getParameters();
-        //Arrays.stream(parameters).forEach(parameter -> DBMethodImpl.implementation(parameter.getName()));
+    private Map<String,String> getMethodParameters(Method method) {
+
+        //List implementation
+        /*
+        return Arrays.stream(method.getParameters())
+                .map(parameter -> {
+                    String parameterType = parameter.getType().getSimpleName(); //e.g. String. We assume only primitive types are used.
+                    String parameterName = null;
+
+                    Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
+                    if(paramAnnotation != null) {
+                        parameterName = paramAnnotation.name(); //returns value of "name" in "@Param" (e.g. AM)
+                    }
+                    else { //if parameter in not declared with @Param
+                        parameterName = parameter.getName(); //returns name of parameter like "arg0" , "arg1" etc.
+                    }
+                    // builder.append(parameterType).append(" ").append(parameterName).append(" ");
+                    return parameterType+" "+parameterName; //e.g. "String email"
+                }).toList();
+        */
+
+        //map implementation
+        return Arrays.stream(method.getParameters())
+                .collect(Collectors.toMap(
+                        parameter -> { //for each parameter get "paramAnnotation.name()" or "parameter.getName()" as Key
+                            Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
+                            return (paramAnnotation != null) ? paramAnnotation.name() : parameter.getName(); //returns value of "name" in "@Param" or "arg0" etc
+                        }, // Key mapper
+                        parameter -> parameter.getType().getSimpleName() // Value mapper. value : e.g "String"
+                ));
     }
 
-    public String createOutputClass() {
+    public void createOutputClass() {
         StringBuilder builder = new StringBuilder();
 
         buildClass(builder); //build class
         buildFields(builder);
 
+        buildDbConnection(builder);
+        buildDbTable(builder);
+
+        buildMethodDefinitions(builder);
         //build methods-----------------------
-        Arrays.stream(methods).forEach(method -> {
-            String methodModifier = Modifier.toString(method.getModifiers()); //e.g. public
-            String methodType = method.getGenericReturnType().toString(); //e.g. int or java.util.List<java.lang.String>
-            //System.out.println(method.getReturnType().getSimpleName()); //e.g. int or List
-            String methodName = method.getName(); //e.g. getAllStudents
 
-            List<String> parametersList = Arrays.stream(method.getParameters())
-                    .map(parameter -> {
-                        String parameterType = parameter.getType().getSimpleName(); //e.g. String. We assume only primitive types are used.
-                        String parameterName = null;
-
-                        Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
-                        if(paramAnnotation != null) {
-                            parameterName = paramAnnotation.name(); //returns value of "name" in "@Param" (e.g. AM)
-                        }
-                        else { //if parameter in not declared with @Param
-                            parameterName = parameter.getName(); //returns name of parameter like "arg0" , "arg1" etc.
-                        }
-                       // builder.append(parameterType).append(" ").append(parameterName).append(" ");
-                        return parameterType+" "+parameterName;
-                    }).toList();
-            builder.append(methodModifier).append(" ").append(methodType).append(" ").append(methodName).append(" (");
-
-            Iterator<String> iterator = parametersList.iterator(); //create list iterator
-            parametersList.forEach(parameter -> {
-                builder.append(parameter);
-
-                iterator.next(); //move to the next element
-                if (iterator.hasNext()) { //if this is not the last parameter
-                    builder.append(", ");
-                }
-            });
-            builder.append(") {\n");
-        });
 
 
         //inside method--------------------------
 
-
-
         System.out.println(builder);
-        return null;
+    }
+
+    private void buildDbConnection(StringBuilder builder) {
+        builder.append("private static Connection connect() {\n"); //build method definition
+
+        if (dbAnnotation == null || tableAnnotation == null) { //annotation missing
+            throw new IllegalArgumentException("Missing class annotation 'Database' or 'Table'");
+        }
+        String name = dbAnnotation.name();
+        String dbType = dbAnnotation.dbType();
+
+        builder.append("\tString dbName = \"").append(name).append("\";\n");
+
+        //build connection string depending on dbType
+        if (dbType.equalsIgnoreCase("sqlite")) {
+            builder.append("\tString connectionString = \"jdbc:sqlite:\"+dbName+\".db\"").append(";\n"); //SQLite
+        }
+        else if (dbType.equalsIgnoreCase("derby")) {
+            builder.append("\tString connectionString = \"jdbc:derby:+dbName+;create=true\"").append(";\n"); //derby
+        }
+        else if (dbType.equalsIgnoreCase("h2")) {
+            builder.append("\tString connectionString = \"jdbc:h2:mem:+dbName\"").append(";\n"); //assuming the connection is to an in-memory db
+        } else {
+            throw new IllegalArgumentException("Accepted values for 'dbType' annotation are : 'SQLITE', 'DERBY', 'H2'");
+        }
+
+        //connect to db
+        builder.append("""
+                \tConnection connection = null;
+                \ttry {
+                \t\tconnection = DriverManager.getConnection(connectionString);
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                \treturn connection;
+                }
+                """);
+        builder.append("\n");
+    }
+
+    private void buildDbTable(StringBuilder builder) {
+
+        StringBuilder tableBuilder = new StringBuilder();
+        String className = c.getSimpleName();
+     //   String primaryKey = getPrimaryKey();
+
+        builder.append("""
+                public static void createTableAndData(){
+                \ttry {
+                \t\tConnection connection = connect();
+                """);
+        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(className).append("\"\n\t\t + ");
+
+        tableBuilder.append("\"(");
+        for (int i=0 ; i<fieldsAnnotations.size() ; i++) {
+
+            if (i!=0) { //not the first field
+                tableBuilder.append(", ");
+            }
+
+            tableBuilder.append(fieldsAnnotations.get(i).name()).append(" ").append(fieldsAnnotations.get(i).type().toUpperCase());
+            if (primaryKey.equals(fieldsAnnotations.get(i).name())) { //if the name value of DBField is the primary key
+                tableBuilder.append(" NOT NULL PRIMARY KEY");
+            }
+        }
+        tableBuilder.append(")\";\n");
+
+        tableBuilder = new StringBuilder(tableBuilder.toString().replace("TEXT", "VARCHAR(100)"));
+        tableBuilder.append("""
+                \t\tStatement statement = connection.createStatement();
+                \t\tstatement.executeUpdate(createTableSQL);
+
+                \t\tstatement.close();
+                \t\tconnection.close();
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                 }""");
+        tableBuilder.append("\n\n");
+        builder.append(tableBuilder);
     }
 
     private void buildClass(StringBuilder builder) {
-        String classModifiers = Modifier.toString(c.getModifiers()); //for "public abstract" class e.g. it gets "public abstract"
+        String classModifiers = Modifier.toString(c.getModifiers()); //for "public abstract class" e.g. it gets "public abstract"
         String className = c.getSimpleName(); //class name (e.g. "Student")
         String superclassSimpleName = c.getSuperclass().getSimpleName(); //"Object" if it does not extend a class
         String superclassName = c.getSuperclass().getName(); //"java.lang.Object" if it does not extend a class
 
-        builder.append(classModifiers+" class "+className+" ");
-        if (!superclassName.equalsIgnoreCase("java.lang.Object")) { //so it does extend a class other than Object
-            builder.append("extends "+superclassSimpleName+ " ");
+        ArrayList<String> classInterfaces = new ArrayList<>(); //ArrayList with all the interfaces the class implements
+        Arrays.stream(c.getInterfaces()).forEach(i -> classInterfaces.add(i.getSimpleName()));
+
+        //start building
+        builder.append(classModifiers).append(" class ").append(className).append(" ");
+        if (!superclassName.equalsIgnoreCase("java.lang.Object")) { //so it does extend a class other than Java's "Object"
+            builder.append("extends ").append(superclassSimpleName).append(" ");
         }
 
-        ArrayList<String> classInterfaces = new ArrayList<>();
-        Arrays.stream(c.getInterfaces()).forEach(i -> {
-            classInterfaces.add(i.getSimpleName());
-        });
         for (int i=0 ; i<classInterfaces.size() ; i++) {
             if (i==0) { //first interface
-                builder.append("Implements "+classInterfaces.get(i)+" ");
+                builder.append("Implements ").append(classInterfaces.get(i)).append(" ");
             }
             else { //other interfaces
-                builder.append(", "+classInterfaces.get(i));
+                builder.append(", ").append(classInterfaces.get(i));
             }
         }
 
@@ -167,44 +240,92 @@ public class InjectionService {
         builder.append("\n");
     }
 
-    public void reflectionTests() {
-        //class
-        String classModifiers = Modifier.toString(c.getModifiers()); //for "public abstract" class e.g. it gets "public abstract"
-        String className = c.getSimpleName(); //class name (e.g. "Student")
-        String superclassName = c.getSuperclass().getSimpleName(); //"Object" if it does not extend a class
-        Arrays.stream(c.getInterfaces()).forEach(x -> {
-            System.out.println("1 "+x.getSimpleName()); //e.g. Readable
-        });
-
-        //fields
-        Arrays.stream(fields).forEach(field -> {
-            String fieldModifier = Modifier.toString(field.getModifiers()); //e.g "private"
-            String fieldType = field.getType().getSimpleName(); //e.g. "String"
-            String fieldName = field.getName(); //e.g. "AM"
-        });
-
-        //methods
+    private void buildMethodDefinitions(StringBuilder builder) {
         Arrays.stream(methods).forEach(method -> {
-            System.out.println(Modifier.toString(method.getModifiers())); //e.g. public
-            System.out.println(method.getGenericReturnType()); //e.g. int or java.util.List<java.lang.String>
-            //System.out.println(method.getReturnType().getSimpleName()); //e.g. int or List
-            System.out.println(method.getName()); //e.g. getAllStudents
 
+            DBMethod dbMethodAnnotation = method.getDeclaredAnnotation(DBMethod.class);
+            if (dbMethodAnnotation == null) { //no DBMethod annotation found. We ignore this method.
+                return; //it works like "continue;" in loops. moves to the next element in the stream
+            }
 
-            Arrays.stream(method.getParameters()).forEach(parameter -> {
-                System.out.println(parameter.getType().getSimpleName()); //e.g. String. We assume only primitive types are used.
+            //create method definition ------------>
+            String methodModifier = Modifier.toString(method.getModifiers()); //e.g. public
+            String methodType = method.getGenericReturnType().toString(); //e.g. int or java.util.List<java.lang.String>
+            String methodName = method.getName(); //e.g. getAllStudents
 
-                Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
-                if(paramAnnotation != null) {
-                    System.out.println(paramAnnotation.name()); //returns value of "name" in "@Param" (e.g. AM)
+            Map<String,String> parametersMap = getMethodParameters(method);
+
+            builder.append(methodModifier).append(" ").append(methodType).append(" ").append(methodName).append(" (");
+
+            int parameterCount = 0;
+            for (Map.Entry<String,String> parameter: parametersMap.entrySet()) {
+                parameterCount ++;
+                builder.append(parameter.getValue()).append(" ").append(parameter.getKey());
+                if (parameterCount < parametersMap.size()) {
+                    builder.append(", ");
                 }
-                else { //if parameter in not declared with @Param
-                    System.out.println("2 : " + parameter.getName()); //returns name of parameter like "arg0" , "arg1" etc.
-                }
-            });
-            System.out.println();
+            }
+
+//            Iterator<String> iterator = parametersMap.iterator(); //create list iterator
+//            parametersMap.forEach(parameter -> {
+//                builder.append(parameter);
+//
+//                iterator.next(); //move to the next element
+//                if (iterator.hasNext()) { //if this is not the last parameter
+//                    builder.append(", ");
+//                }
+//            });
+
+            builder.append(") {\n");
+            //<-------------- create method definition
+
+            //build method execution
+            if (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll")) {
+                //buildSelectAll(...)
+            } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteOne")) {
+                buildDeleteOne(builder, method);
+            }
         });
-
-
     }
+
+    private void buildDeleteOne(StringBuilder builder, Method method) {
+        //we assume the method only contains one parameter
+
+        Map<String,String> methodParameters = getMethodParameters(method);
+        String parameterName = "";
+        String parameterType = "";
+        for (Map.Entry<String,String> parameter: methodParameters.entrySet()) {
+            parameterName = parameter.getKey(); //name of the parameter
+            parameterType = parameter.getValue(); //type of the parameter
+        }
+
+        builder.append("""
+                \ttry {
+                \t\tConnection connection = connect();
+                \t\tStatement statement = connection.createStatement();
+                \t\tString deleteSQL = "DELETE FROM\s""").append(tableAnnotation.name()).append(" WHERE ").append(parameterName).append(" = ?\";\n");
+        builder.append("\t\tPreparedStatement preparedStatement = connection.prepareStatement(deleteSQL);\n");
+
+        if (parameterType.equalsIgnoreCase("String")) {
+            builder.append("\t\tpreparedStatement.setString(1, ").append(parameterName).append(");");
+        } else if (parameterType.equalsIgnoreCase("int")) {
+            builder.append("\t\tpreparedStatement.setInt(1, ").append(parameterName).append(");");
+        } else if (parameterType.equalsIgnoreCase("boolean")) {
+            builder.append("\t\tpreparedStatement.setBoolean(1, ").append(parameterName).append(");");
+        }
+        builder.append("\n");
+        builder.append("\t\tint rowsAffected = preparedStatement.executeUpdate(deleteSQL);\n");
+        builder.append("""
+                \t\tstatement.close();
+                \t\tconnection.close();
+
+                \t\treturn rowsAffected;
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                """);
+
+        builder.append(" }\n");
+    }
+
 }
