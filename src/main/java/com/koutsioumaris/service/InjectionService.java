@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
 
 public class InjectionService {
 
@@ -70,35 +71,17 @@ public class InjectionService {
          return c.getDeclaredMethods();
     }
 
-    private Map<String,String> getMethodParameters(Method method) {
+    private LinkedHashMap<String,String> getMethodParameters(Method method) {
 
-        //List implementation
-        /*
-        return Arrays.stream(method.getParameters())
-                .map(parameter -> {
-                    String parameterType = parameter.getType().getSimpleName(); //e.g. String. We assume only primitive types are used.
-                    String parameterName = null;
-
-                    Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
-                    if(paramAnnotation != null) {
-                        parameterName = paramAnnotation.name(); //returns value of "name" in "@Param" (e.g. AM)
-                    }
-                    else { //if parameter in not declared with @Param
-                        parameterName = parameter.getName(); //returns name of parameter like "arg0" , "arg1" etc.
-                    }
-                    // builder.append(parameterType).append(" ").append(parameterName).append(" ");
-                    return parameterType+" "+parameterName; //e.g. "String email"
-                }).toList();
-        */
-
-        //map implementation
         return Arrays.stream(method.getParameters())
                 .collect(Collectors.toMap(
                         parameter -> { //for each parameter get "paramAnnotation.name()" or "parameter.getName()" as Key
                             Param paramAnnotation = parameter.getDeclaredAnnotation(Param.class);
-                            return (paramAnnotation != null) ? paramAnnotation.name() : parameter.getName(); //returns value of "name" in "@Param" or "arg0" etc
+                            return (paramAnnotation != null) ? paramAnnotation.name() : parameter.getName(); //returns value of "name" in "@Param" if it exists else "arg0" etc
                         }, // Key mapper
-                        parameter -> parameter.getType().getSimpleName() // Value mapper. value : e.g "String"
+                        parameter -> parameter.getType().getSimpleName(), // value mapper. value : e.g "String"
+                        (existing, replacement) -> existing, // merge function, keeps existing value
+                        LinkedHashMap::new // supplier for the map, returns LinkedHashMap instead of the default HashMap so that the parameters are ordered by insertion
                 ));
     }
 
@@ -111,12 +94,7 @@ public class InjectionService {
         buildDbConnection(builder);
         buildDbTable(builder);
 
-        buildMethodDefinitions(builder);
-        //build methods-----------------------
-
-
-
-        //inside method--------------------------
+        buildMethods(builder);
 
         System.out.println(builder);
     }
@@ -240,7 +218,7 @@ public class InjectionService {
         builder.append("\n");
     }
 
-    private void buildMethodDefinitions(StringBuilder builder) {
+    private void buildMethods(StringBuilder builder) {
         Arrays.stream(methods).forEach(method -> {
 
             DBMethod dbMethodAnnotation = method.getDeclaredAnnotation(DBMethod.class);
@@ -253,45 +231,85 @@ public class InjectionService {
             String methodType = method.getGenericReturnType().toString(); //e.g. int or java.util.List<java.lang.String>
             String methodName = method.getName(); //e.g. getAllStudents
 
-            Map<String,String> parametersMap = getMethodParameters(method);
+            LinkedHashMap<String, String> methodParameters = getMethodParameters(method);
 
             builder.append(methodModifier).append(" ").append(methodType).append(" ").append(methodName).append(" (");
 
             int parameterCount = 0;
-            for (Map.Entry<String,String> parameter: parametersMap.entrySet()) {
-                parameterCount ++;
+            for (Map.Entry<String, String> parameter : methodParameters.entrySet()) {
+                parameterCount++;
                 builder.append(parameter.getValue()).append(" ").append(parameter.getKey());
-                if (parameterCount < parametersMap.size()) {
+                if (parameterCount < methodParameters.size()) {
                     builder.append(", ");
                 }
             }
-
-//            Iterator<String> iterator = parametersMap.iterator(); //create list iterator
-//            parametersMap.forEach(parameter -> {
-//                builder.append(parameter);
-//
-//                iterator.next(); //move to the next element
-//                if (iterator.hasNext()) { //if this is not the last parameter
-//                    builder.append(", ");
-//                }
-//            });
 
             builder.append(") {\n");
             //<-------------- create method definition
 
             //build method execution
-            if (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll")) {
+            if (dbMethodAnnotation.type().equalsIgnoreCase("InsertOne")) {
+                buildInsertOne(builder, methodParameters);
+            } else if (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll")) {
                 //buildSelectAll(...)
             } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteOne")) {
-                buildDeleteOne(builder, method);
+                buildDeleteOne(builder, methodParameters);
+            } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteAll")) {
+                buildDeleteAll(builder);
             }
         });
     }
 
-    private void buildDeleteOne(StringBuilder builder, Method method) {
+    private void buildInsertOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
+
+        builder.append("""
+                \ttry {
+                \t\tConnection connection = connect();
+                \t\tString insertSQL = "INSERT INTO\s""")
+                .append(tableAnnotation.name()).append(" VALUES(");
+        for (int i = 0; i < methodParameters.size() ; i++) { //add a "?" for each parameter
+            builder.append("?");
+            if (i != methodParameters.size()-1) {
+                builder.append(",");
+            }
+        }
+        builder.append(")\";\n");
+        builder.append("\t\tPreparedStatement preparedStatement = connection.prepareStatement(insertSQL);\n");
+
+        int parameterCounter = 0; //the number of values to be added to the preparedStatement
+        for (Map.Entry<String,String> parameter: methodParameters.entrySet()) { //for each parameter add that param in the preparedStatement
+            String parameterName = parameter.getKey(); //name of the parameter
+            String parameterType = parameter.getValue(); //type of the parameter
+            parameterCounter++;
+
+            if (parameterType.equalsIgnoreCase("String")) {
+                builder.append("\t\tpreparedStatement.setString(");
+            } else if (parameterType.equalsIgnoreCase("int")) {
+                builder.append("\t\tpreparedStatement.setInt(");
+            } else if (parameterType.equalsIgnoreCase("boolean")) {
+                builder.append("\t\tpreparedStatement.setBoolean(");
+            }
+            builder.append(parameterCounter).append(", ").append(parameterName).append(");\n");
+        }
+
+        builder.append("\n");
+        builder.append("\t\tint count = preparedStatement.executeUpdate();\n");
+        builder.append("""
+                \t\tpreparedStatement.close();
+                \t\tconnection.close();
+
+                \t\treturn count;
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                """);
+
+        builder.append(" }\n");
+    }
+
+    private void buildDeleteOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
         //we assume the method only contains one parameter
 
-        Map<String,String> methodParameters = getMethodParameters(method);
         String parameterName = "";
         String parameterType = "";
         for (Map.Entry<String,String> parameter: methodParameters.entrySet()) {
@@ -302,7 +320,6 @@ public class InjectionService {
         builder.append("""
                 \ttry {
                 \t\tConnection connection = connect();
-                \t\tStatement statement = connection.createStatement();
                 \t\tString deleteSQL = "DELETE FROM\s""").append(tableAnnotation.name()).append(" WHERE ").append(parameterName).append(" = ?\";\n");
         builder.append("\t\tPreparedStatement preparedStatement = connection.prepareStatement(deleteSQL);\n");
 
@@ -316,10 +333,34 @@ public class InjectionService {
         builder.append("\n");
         builder.append("\t\tint rowsAffected = preparedStatement.executeUpdate(deleteSQL);\n");
         builder.append("""
-                \t\tstatement.close();
+                \t\tpreparedStatement.close();
                 \t\tconnection.close();
 
                 \t\treturn rowsAffected;
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                """);
+
+        builder.append(" }\n");
+    }
+
+    private void buildDeleteAll(StringBuilder builder) {
+        //we assume the method contains no parameter
+
+        builder.append("""
+                \ttry {
+                \t\tConnection connection = connect();
+                \t\tStatement statement = connection.createStatement();
+                \t\tString deleteSQL = "DELETE * FROM\s""").append(tableAnnotation.name()).append("\";\n");
+        builder.append("\n");
+        builder.append("""
+                \t\tint rowsAffected = statement.executeUpdate(deleteSQL);
+
+                \t\tstatement.close();
+                \t\tconnection.close();
+
+                \t\t return rowsAffected;
                 \t} catch (SQLException e) {
                 \t\tthrow new RuntimeException(e);
                 \t}
