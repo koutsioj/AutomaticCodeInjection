@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.LinkedHashMap;
-
+import java.util.HashSet;
 public class InjectionService {
 
     private final Class<?> c;
@@ -20,6 +20,7 @@ public class InjectionService {
     private final Table tableAnnotation;
     private final ArrayList<DBField> fieldsAnnotations;
     private final String primaryKey;
+    private final HashSet<String> importsSet = new HashSet<>();
 
 
     public InjectionService(Class<?>  c) {
@@ -96,10 +97,16 @@ public class InjectionService {
 
         buildMethods(builder);
 
+        importsSet.forEach(element -> builder.insert(0, element+"\n"));
         System.out.println(builder);
     }
 
     private void buildDbConnection(StringBuilder builder) {
+        //add necessary imports
+        importsSet.add("import java.sql.Connection;");
+        importsSet.add("import java.sql.DriverManager;");
+        importsSet.add("import java.sql.SQLException;");
+
         builder.append("private static Connection connect() {\n"); //build method definition
 
         if (dbAnnotation == null || tableAnnotation == null) { //annotation missing
@@ -138,6 +145,7 @@ public class InjectionService {
     }
 
     private void buildDbTable(StringBuilder builder) {
+        importsSet.add("import java.sql.Statement;"); //add necessary import
 
         StringBuilder tableBuilder = new StringBuilder();
         String className = c.getSimpleName();
@@ -261,6 +269,7 @@ public class InjectionService {
     }
 
     private void buildInsertOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
+        importsSet.add("import java.sql.PreparedStatement;");
 
         builder.append("""
                 \ttry {
@@ -310,6 +319,8 @@ public class InjectionService {
     private void buildDeleteOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
         //we assume the method only contains one parameter
 
+        importsSet.add("import java.sql.PreparedStatement;");
+
         String parameterName = "";
         String parameterType = "";
         for (Map.Entry<String,String> parameter: methodParameters.entrySet()) {
@@ -348,6 +359,8 @@ public class InjectionService {
     private void buildDeleteAll(StringBuilder builder) {
         //we assume the method contains no parameter
 
+        importsSet.add("import java.sql.Statement;");
+
         builder.append("""
                 \ttry {
                 \t\tConnection connection = connect();
@@ -368,5 +381,4 @@ public class InjectionService {
 
         builder.append(" }\n");
     }
-
 }

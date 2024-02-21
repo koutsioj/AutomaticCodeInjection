@@ -20,6 +20,12 @@ public class Student {
     @DBField(name="PostGraduate",type="Boolean")
     boolean postGraduate;
 
+    @DBMethod(type="InsertOne")
+    public int insertStudent(@Param(name="AM") String AM,@Param(name="Email") String email,@Param(name="Year") int yearOfStudies,
+                                      @Param(name="FullName") String fullName,@Param(name="PostGraduate") boolean postGraduate){
+        return 0;
+    }
+
     //Για τη μέθοδο αυτή μπορείτε να δοκιμάστε να επιστρέφετε List<Student>
     @DBMethod(type="SelectAll")
     public List<String> getAllStudents(){
@@ -27,7 +33,18 @@ public class Student {
     }
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν
     @DBMethod(type="DeleteOne")
-    public int deleteStudents(@Param(name="AM") String AM){
+    public int deleteStudent(@Param(name="AM") String AM){
         return 0;
     }
+
+    @DBMethod(type="DeleteAll")
+    public int deleteStudents(){
+        return 0;
+    }
+
+    //This method will not be added to the output class because it doesn't contain the @DBMethod annotation
+    public int test(String AM,@Param(name="Test") int test){
+        return 0;
+    }
+
 }
