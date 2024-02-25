@@ -148,15 +148,14 @@ public class InjectionService {
         importsSet.add("import java.sql.Statement;"); //add necessary import
 
         StringBuilder tableBuilder = new StringBuilder();
-        String className = c.getSimpleName();
-     //   String primaryKey = getPrimaryKey();
+        String tableName = tableAnnotation.name();
 
         builder.append("""
                 public static void createTableAndData(){
                 \ttry {
                 \t\tConnection connection = connect();
                 """);
-        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(className).append("\"\n\t\t + ");
+        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(tableName).append("\"\n\t\t + ");
 
         tableBuilder.append("\"(");
         for (int i=0 ; i<fieldsAnnotations.size() ; i++) {
