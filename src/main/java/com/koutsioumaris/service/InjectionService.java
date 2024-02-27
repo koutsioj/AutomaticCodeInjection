@@ -465,15 +465,29 @@ public class InjectionService {
     private void buildSelectOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
         //we assume the method only contains one parameter
         importsSet.add("import java.sql.Statement;");
-        String parameterName = "";
-        for (Map.Entry<String,String> parameter: methodParameters.entrySet()) {
-            parameterName = parameter.getKey(); //name of the parameter
-        }
         builder.append("""
                 \ttry {
                 \t\tConnection connection = connect();
                 \t\tStatement statement = connection.createStatement();
-                \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append(" WHERE ").append(parameterName).append(" = ").append(parameterName).append("\";\n");;
+                \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append(" WHERE ");
+                int parameterCounter = 0; //the number of values to be added to the preparedStatement
+                for (Map.Entry<String,String> parameter: methodParameters.entrySet()) { //for each parameter add that param in the preparedStatement
+                    String parameterName = parameter.getKey(); //name of the parameter
+                    String parameterType = parameter.getValue(); //type of the parameter
+
+                    builder.append(parameterName).append(" = ?\";");
+
+                    parameterCounter++;
+
+                    if (parameterType.equalsIgnoreCase("String")) {
+                        builder.append("\n\t\tpreparedStatement.setString(");
+                    } else if (parameterType.equalsIgnoreCase("int")) {
+                        builder.append("\n\t\tpreparedStatement.setInt(");
+                    } else if (parameterType.equalsIgnoreCase("boolean")) {
+                        builder.append("\n\t\tpreparedStatement.setBoolean(");
+                    }
+                    builder.append(parameterCounter).append(", ").append(parameterName).append(");\n");
+                }
         builder.append("\n");
         builder.append("""
                 \t\tResultSet resultsFound = statement.executeQuery(selectSQL);
