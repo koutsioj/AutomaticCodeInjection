@@ -28,7 +28,12 @@ public class Student {
 
     //Για τη μέθοδο αυτή μπορείτε να δοκιμάστε να επιστρέφετε List<Student>
     @DBMethod(type="SelectAll")
-    public List<String> getAllStudents(){
+    public List<Student> getAllStudents(){
+        return null;
+    }
+    //Επιστρέφουμε τον μοναδικό μαθητή με το συγκεκριμένο ΑΦΜ
+    @DBMethod(type="SelectOne")
+    public List<Student> getOneStudent(@Param(name="AM") String AM){
         return null;
     }
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν

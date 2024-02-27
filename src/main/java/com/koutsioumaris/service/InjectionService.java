@@ -2,6 +2,9 @@ package com.koutsioumaris.service;
 
 import com.koutsioumaris.annotations.*;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -69,7 +72,7 @@ public class InjectionService {
     }
 
     private Method[] getMethods(Class<?> c) {
-         return c.getDeclaredMethods();
+        return c.getDeclaredMethods();
     }
 
     private LinkedHashMap<String,String> getMethodParameters(Method method) {
@@ -98,7 +101,22 @@ public class InjectionService {
         buildMethods(builder);
 
         importsSet.forEach(element -> builder.insert(0, element+"\n"));
+        builder.append("\n}");
         System.out.println(builder);
+
+        createFile(builder.toString());
+    }
+
+    public void createFile(String builder) {
+        try {
+            FileWriter myFile = new FileWriter("output.java");
+            myFile.write(builder);
+            myFile.close();
+            System.out.println("File created successfully");
+        }catch (IOException e) {
+            System.out.println("Unable to create file");
+            e.printStackTrace();
+        }
     }
 
     private void buildDbConnection(StringBuilder builder) {
@@ -106,7 +124,9 @@ public class InjectionService {
         importsSet.add("import java.sql.Connection;");
         importsSet.add("import java.sql.DriverManager;");
         importsSet.add("import java.sql.SQLException;");
-
+        importsSet.add("import java.sql.ResultSet;");
+        importsSet.add("import java.util.ArrayList;");
+        importsSet.add("import java.util.List;");
         builder.append("private static Connection connect() {\n"); //build method definition
 
         if (dbAnnotation == null || tableAnnotation == null) { //annotation missing
@@ -148,14 +168,15 @@ public class InjectionService {
         importsSet.add("import java.sql.Statement;"); //add necessary import
 
         StringBuilder tableBuilder = new StringBuilder();
-        String tableName = tableAnnotation.name();
+        String className = c.getSimpleName();
+        //   String primaryKey = getPrimaryKey();
 
         builder.append("""
                 public static void createTableAndData(){
                 \ttry {
                 \t\tConnection connection = connect();
                 """);
-        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(tableName).append("\"\n\t\t + ");
+        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(className).append("\"\n\t\t + ");
 
         tableBuilder.append("\"(");
         for (int i=0 ; i<fieldsAnnotations.size() ; i++) {
@@ -258,7 +279,9 @@ public class InjectionService {
             if (dbMethodAnnotation.type().equalsIgnoreCase("InsertOne")) {
                 buildInsertOne(builder, methodParameters);
             } else if (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll")) {
-                //buildSelectAll(...)
+                buildSelectAll(builder);
+            } else if(dbMethodAnnotation.type().equalsIgnoreCase("SelectOne")) {
+                buildSelectOne(builder, methodParameters);
             } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteOne")) {
                 buildDeleteOne(builder, methodParameters);
             } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteAll")) {
@@ -373,6 +396,124 @@ public class InjectionService {
                 \t\tconnection.close();
 
                 \t\t return rowsAffected;
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                """);
+
+        builder.append(" }\n");
+    }
+
+    //build Select ALL Students
+    private void buildSelectAll(StringBuilder builder) {
+        //Here we implement the select All function so there are no parameters
+        importsSet.add("import java.sql.Statement;");
+        builder.append("""
+                \ttry {
+                \t\tConnection connection = connect();
+                \t\tStatement statement = connection.createStatement();
+                \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append("\";\n");
+        builder.append("\n");
+        builder.append("""
+                \t\tResultSet resultsFound = statement.executeQuery(selectSQL);
+                """);
+        builder.append("""
+                \t\tList<""");
+        builder.append(c.getName());
+        builder.append("""
+            > list = new ArrayList<>();
+            \t\twhile(resultsFound.next()) {\n\t\t\t""");
+        builder.append(c.getName());
+        builder.append("""
+                \stemp = new\s""").append(c.getName()).append("(");
+
+        Arrays.stream(fields).forEach(field -> {
+            builder.append("\n\t\t\t\tresultsFound");
+            if (field.getType().toString().endsWith("String")) {
+                builder.append(".getString(\"");
+            } else if (field.getType().toString().equalsIgnoreCase("int")) {
+                builder.append(".getInt(\"");;
+            } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
+                builder.append(".getBoolean(\"");
+            }
+            builder.append(field.getName()).append("\")");
+            if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
+                builder.append(");");
+                builder.append("""
+                       \t\t\tlist.add(temp);
+                        """);
+            }
+            else {
+                builder.append((",\n"));
+            }
+        });
+
+        builder.append("""
+                \n\t\t}
+                \t\tstatement.close();
+                \t\tconnection.close();
+                \t\treturn list;
+                \t} catch (SQLException e) {
+                \t\tthrow new RuntimeException(e);
+                \t}
+                """);
+
+        builder.append(" }\n");
+    }
+
+    //build Select One Student()
+    private void buildSelectOne(StringBuilder builder, LinkedHashMap<String, String> methodParameters) {
+        //we assume the method only contains one parameter
+        importsSet.add("import java.sql.Statement;");
+        String parameterName = "";
+        for (Map.Entry<String,String> parameter: methodParameters.entrySet()) {
+            parameterName = parameter.getKey(); //name of the parameter
+        }
+        builder.append("""
+                \ttry {
+                \t\tConnection connection = connect();
+                \t\tStatement statement = connection.createStatement();
+                \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append(" WHERE ").append(parameterName).append(" = ").append(parameterName).append("\";\n");;
+        builder.append("\n");
+        builder.append("""
+                \t\tResultSet resultsFound = statement.executeQuery(selectSQL);
+                """);
+        builder.append("""
+                \t\tList<""");
+        builder.append(c.getName());
+        builder.append("""
+            > list = new ArrayList<>();
+            \t\twhile(resultsFound.next()) {\n\t\t\t""");
+        builder.append(c.getName());
+        builder.append("""
+                \stemp = new\s""").append(c.getName()).append("(");
+
+        Arrays.stream(fields).forEach(field -> {
+            builder.append("\n\t\t\t\tresultsFound");
+            if (field.getType().toString().endsWith("String")) {
+                builder.append(".getString(\"");
+            } else if (field.getType().toString().equalsIgnoreCase("int")) {
+                builder.append(".getInt(\"");;
+            } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
+                builder.append(".getBoolean(\"");
+            }
+            builder.append(field.getName()).append("\")");
+            if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
+                builder.append(");");
+                builder.append("""
+                    \t\t\tlist.add(temp);
+                """);
+            }
+            else {
+                builder.append((",\n"));
+            }
+        });
+
+        builder.append("""
+                \n\t\t}
+                \t\tstatement.close();
+                \t\tconnection.close();
+                \t\treturn list;
                 \t} catch (SQLException e) {
                 \t\tthrow new RuntimeException(e);
                 \t}
