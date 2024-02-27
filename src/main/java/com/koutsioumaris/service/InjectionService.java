@@ -440,7 +440,7 @@ public class InjectionService {
             if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
                 builder.append(");");
                 builder.append("""
-                       \t\t\tlist.add(temp);
+                       \n\t\t\tlist.add(temp);
                         """);
             }
             else {
@@ -489,7 +489,7 @@ public class InjectionService {
                 \stemp = new\s""").append(c.getName()).append("(");
 
         Arrays.stream(fields).forEach(field -> {
-            builder.append("\n\t\t\t\tresultsFound");
+            builder.append("\n\t\t\tresultsFound");
             if (field.getType().toString().endsWith("String")) {
                 builder.append(".getString(\"");
             } else if (field.getType().toString().equalsIgnoreCase("int")) {
@@ -501,7 +501,7 @@ public class InjectionService {
             if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
                 builder.append(");");
                 builder.append("""
-                    \t\t\tlist.add(temp);
+                    \n\t\t\tlist.add(temp);
                 """);
             }
             else {
