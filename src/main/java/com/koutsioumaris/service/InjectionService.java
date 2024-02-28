@@ -2,18 +2,15 @@ package com.koutsioumaris.service;
 
 import com.koutsioumaris.annotations.*;
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.LinkedHashMap;
-import java.util.HashSet;
+
 public class InjectionService {
 
     private final Class<?> c;
@@ -94,6 +91,7 @@ public class InjectionService {
 
         buildClass(builder); //build class
         buildFields(builder);
+        buildConstructor(builder);
 
         buildDbConnection(builder);
         buildDbTable(builder);
@@ -246,7 +244,53 @@ public class InjectionService {
         builder.append("\n");
     }
 
-    private void buildMethods(StringBuilder builder) {
+    //creates an all arg constructor
+    private void buildConstructor(StringBuilder builder) {
+
+        //get all declared constructors of the class
+        Constructor<?>[] constructors = c.getDeclaredConstructors();
+
+        //return an optional constructor with a @FullArgConstructor annotation
+        Optional<Constructor<?>> annotatedConstructor = Arrays.stream(constructors).filter(constructor -> {
+            return constructor.getDeclaredAnnotation(FullArgConstructor.class) != null;
+        }).findAny();
+
+        if (annotatedConstructor.isEmpty()) { //if there is no annotated constructor end method execution
+            return;
+        }
+
+        String constructorModifier = Modifier.toString(annotatedConstructor.get().getModifiers()); //e.g public
+        String constructorName = c.getSimpleName();
+
+
+        ArrayList<String> paramTypes = new ArrayList<>();
+        ArrayList<String> paramNames = new ArrayList<>();
+
+        //get the field names and types to later insert them in the all arg constructor
+        for (Field field: fields) {
+            paramTypes.add(field.getType().getSimpleName());
+            paramNames.add(field.getName());
+        }
+
+        //create the declaration of the constructor
+        builder.append(constructorModifier).append(" ").append(constructorName).append("(");
+        for (int i = 0; i < paramTypes.size(); i++) {
+            builder.append(paramTypes.get(i)).append(" ").append(paramNames.get(i));
+            if (i!= paramTypes.size()-1) {
+                builder.append(",");
+            }
+        }
+        builder.append(") {\n");
+
+        //create the internal code of the constructor
+        for (String paramName: paramNames) {
+            builder.append("\tthis.").append(paramName).append(" = ").append(paramName).append(";\n");
+        }
+        builder.append("}\n\n");
+    }
+
+
+        private void buildMethods(StringBuilder builder) {
         Arrays.stream(methods).forEach(method -> {
 
             DBMethod dbMethodAnnotation = method.getDeclaredAnnotation(DBMethod.class);
@@ -256,7 +300,7 @@ public class InjectionService {
 
             //create method definition ------------>
             String methodModifier = Modifier.toString(method.getModifiers()); //e.g. public
-            String methodType = method.getGenericReturnType().toString(); //e.g. int or java.util.List<java.lang.String>
+            String methodType = method.getReturnType().getSimpleName(); //e.g. "int" or "List"
             String methodName = method.getName(); //e.g. getAllStudents
 
             LinkedHashMap<String, String> methodParameters = getMethodParameters(method);
@@ -413,38 +457,33 @@ public class InjectionService {
                 \t\tConnection connection = connect();
                 \t\tStatement statement = connection.createStatement();
                 \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append("\";\n");
-        builder.append("\n");
-        builder.append("""
-                \t\tResultSet resultsFound = statement.executeQuery(selectSQL);
-                """);
-        builder.append("""
-                \t\tList<""");
-        builder.append(c.getName());
+        builder.append("\n\t\tResultSet resultsFound = statement.executeQuery(selectSQL);");
+        builder.append("\n\t\tList<");
+        builder.append(c.getSimpleName());
         builder.append("""
             > list = new ArrayList<>();
-            \t\twhile(resultsFound.next()) {\n\t\t\t""");
-        builder.append(c.getName());
+            \t\twhile(resultsFound.next()) {
+            \t\t\t""");
+        builder.append(c.getSimpleName());
         builder.append("""
-                \stemp = new\s""").append(c.getName()).append("(");
+                \stemp = new\s""").append(c.getSimpleName()).append("(");
 
         Arrays.stream(fields).forEach(field -> {
             builder.append("\n\t\t\t\tresultsFound");
             if (field.getType().toString().endsWith("String")) {
                 builder.append(".getString(\"");
             } else if (field.getType().toString().equalsIgnoreCase("int")) {
-                builder.append(".getInt(\"");;
+                builder.append(".getInt(\"");
             } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
                 builder.append(".getBoolean(\"");
             }
             builder.append(field.getName()).append("\")");
             if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
                 builder.append(");");
-                builder.append("""
-                       \n\t\t\tlist.add(temp);
-                        """);
+                builder.append("\n\t\t\tlist.add(temp);");
             }
             else {
-                builder.append((",\n"));
+                builder.append((","));
             }
         });
 
@@ -475,9 +514,11 @@ public class InjectionService {
                     String parameterName = parameter.getKey(); //name of the parameter
                     String parameterType = parameter.getValue(); //type of the parameter
 
-                    builder.append(parameterName).append(" = ?\";");
+                    builder.append(parameterName).append(" = ?\";\n");
 
                     parameterCounter++;
+
+                    builder.append("\t\tPreparedStatement preparedStatement = connection.prepareStatement(selectSQL);\n");
 
                     if (parameterType.equalsIgnoreCase("String")) {
                         builder.append("\n\t\tpreparedStatement.setString(");
@@ -489,37 +530,29 @@ public class InjectionService {
                     builder.append(parameterCounter).append(", ").append(parameterName).append(");\n");
                 }
         builder.append("\n");
+        builder.append("\t\tResultSet resultsFound = statement.executeQuery(selectSQL);");
         builder.append("""
-                \t\tResultSet resultsFound = statement.executeQuery(selectSQL);
-                """);
-        builder.append("""
-                \t\tList<""");
-        builder.append(c.getName());
-        builder.append("""
-            > list = new ArrayList<>();
-            \t\twhile(resultsFound.next()) {\n\t\t\t""");
-        builder.append(c.getName());
-        builder.append("""
-                \stemp = new\s""").append(c.getName()).append("(");
+            \n\t\tStudent selectedStudent = null;
+            \t\twhile(resultsFound.next()) {
+            \t\t\t""");
+        builder.append("\sselectedStudent = new\s").append(c.getSimpleName()).append("(");
 
         Arrays.stream(fields).forEach(field -> {
             builder.append("\n\t\t\tresultsFound");
             if (field.getType().toString().endsWith("String")) {
                 builder.append(".getString(\"");
             } else if (field.getType().toString().equalsIgnoreCase("int")) {
-                builder.append(".getInt(\"");;
+                builder.append(".getInt(\"");
             } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
                 builder.append(".getBoolean(\"");
             }
             builder.append(field.getName()).append("\")");
             if(field == (Arrays.stream(fields).reduce((first,second) -> second)).orElse(null)) {
                 builder.append(");");
-                builder.append("""
-                    \n\t\t\tlist.add(temp);
-                """);
+
             }
             else {
-                builder.append((",\n"));
+                builder.append((","));
             }
         });
 
@@ -527,7 +560,7 @@ public class InjectionService {
                 \n\t\t}
                 \t\tstatement.close();
                 \t\tconnection.close();
-                \t\treturn list;
+                \t\treturn selectedStudent;
                 \t} catch (SQLException e) {
                 \t\tthrow new RuntimeException(e);
                 \t}

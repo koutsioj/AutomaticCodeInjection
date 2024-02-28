@@ -20,6 +20,10 @@ public class Student {
     @DBField(name="PostGraduate",type="Boolean")
     boolean postGraduate;
 
+    @FullArgConstructor
+    public Student() {
+    }
+
     @DBMethod(type="InsertOne")
     public int insertStudent(@Param(name="AM") String AM,@Param(name="Email") String email,@Param(name="Year") int yearOfStudies,
                                       @Param(name="FullName") String fullName,@Param(name="PostGraduate") boolean postGraduate){
@@ -33,7 +37,7 @@ public class Student {
     }
     //Επιστρέφουμε τον μοναδικό μαθητή με το συγκεκριμένο ΑΦΜ
     @DBMethod(type="SelectOne")
-    public List<Student> getOneStudent(@Param(name="AM") String AM){
+    public Student getOneStudent(@Param(name="AM") String AM){
         return null;
     }
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν
