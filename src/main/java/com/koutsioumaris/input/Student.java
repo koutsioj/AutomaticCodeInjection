@@ -5,7 +5,10 @@ import com.koutsioumaris.annotations.*;
 import java.util.List;
 import java.util.Objects;
 
-@Database(name="UnipiDB", dbType ="sqlite")
+//@Database(name="UnipiDB", dbType ="sqlite")
+//@Database(name="UnipiDB", dbType ="derby")
+@Database(name="UnipiDB", dbType ="h2")
+
 @Table(name="Student")
 public class Student {
     @PrimaryKey
@@ -13,46 +16,49 @@ public class Student {
     String AM;
     @DBField(name="Email",type="Text")
     String email;
-    @DBField(name="Year",type="Integer")
+    @DBField(name="YearOfStudies",type="Integer")
     int yearOfStudies;
     @DBField(name="FullName",type="Text")
     String fullName;
     @DBField(name="PostGraduate",type="Boolean")
     boolean postGraduate;
 
-    @FullArgConstructor
+    @NoArgConstructor
     public Student() {
+    }
+    @FullArgConstructor
+    public Student(String AM, String email,int yearOfStudies,String fullName,boolean postGraduate) {
     }
 
     @DBMethod(type="InsertOne")
-    public int insertStudent(@Param(name="AM") String AM,@Param(name="Email") String email,@Param(name="Year") int yearOfStudies,
+    public static int insertStudent(@Param(name="AM") String AM,@Param(name="Email") String email,@Param(name="Year") int yearOfStudies,
                                       @Param(name="FullName") String fullName,@Param(name="PostGraduate") boolean postGraduate){
         return 0;
     }
 
     //Για τη μέθοδο αυτή μπορείτε να δοκιμάστε να επιστρέφετε List<Student>
     @DBMethod(type="SelectAll")
-    public List<Student> getAllStudents(){
+    public static List<Student> getAllStudents(){
         return null;
     }
     //Επιστρέφουμε τον μοναδικό μαθητή με το συγκεκριμένο ΑΦΜ
     @DBMethod(type="SelectOne")
-    public Student getOneStudent(@Param(name="AM") String AM){
+    public static Student getOneStudent(@Param(name="AM") String AM){
         return null;
     }
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν
     @DBMethod(type="DeleteOne")
-    public int deleteStudent(@Param(name="AM") String AM){
+    public static int deleteStudent(@Param(name="AM") String AM){
         return 0;
     }
 
     @DBMethod(type="DeleteAll")
-    public int deleteStudents(){
+    public static int deleteStudents(){
         return 0;
     }
 
     //This method will not be added to the output class because it doesn't contain the @DBMethod annotation
-    public int test(String AM,@Param(name="Test") int test){
+    public static int test(String AM,@Param(name="Test") int test){
         return 0;
     }
 

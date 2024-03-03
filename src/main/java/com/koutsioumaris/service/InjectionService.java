@@ -140,10 +140,10 @@ public class InjectionService {
             builder.append("\tString connectionString = \"jdbc:sqlite:\"+dbName+\".db\"").append(";\n"); //SQLite
         }
         else if (dbType.equalsIgnoreCase("derby")) {
-            builder.append("\tString connectionString = \"jdbc:derby:+dbName+;create=true\"").append(";\n"); //derby
+            builder.append("\tString connectionString = \"jdbc:derby:\"+dbName+\";create=true\"").append(";\n"); //derby
         }
         else if (dbType.equalsIgnoreCase("h2")) {
-            builder.append("\tString connectionString = \"jdbc:h2:mem:+dbName\"").append(";\n"); //assuming the connection is to an in-memory db
+            builder.append("\tString connectionString = \"jdbc:h2:mem:\"+dbName").append(";\n"); //assuming the connection is to an in-memory db
         } else {
             throw new IllegalArgumentException("Accepted values for 'dbType' annotation are : 'SQLITE', 'DERBY', 'H2'");
         }
@@ -251,42 +251,48 @@ public class InjectionService {
         Constructor<?>[] constructors = c.getDeclaredConstructors();
 
         //return an optional constructor with a @FullArgConstructor annotation
-        Optional<Constructor<?>> annotatedConstructor = Arrays.stream(constructors).filter(constructor -> {
-            return constructor.getDeclaredAnnotation(FullArgConstructor.class) != null;
-        }).findAny();
+        List<Constructor<?>> annotatedConstructors = Arrays.stream(constructors)
+                .filter(constructor -> (constructor.getDeclaredAnnotation(FullArgConstructor.class) != null) ||
+                        constructor.getDeclaredAnnotation(NoArgConstructor.class) != null)
+                .toList();
 
-        if (annotatedConstructor.isEmpty()) { //if there is no annotated constructor end method execution
+        if (annotatedConstructors.isEmpty()) { //if there is no annotated constructor end method execution
             return;
         }
 
-        String constructorModifier = Modifier.toString(annotatedConstructor.get().getModifiers()); //e.g public
-        String constructorName = c.getSimpleName();
+        for (Constructor<?> constructor: annotatedConstructors) {
+            String constructorModifier = Modifier.toString(constructor.getModifiers()); //e.g public
+            String constructorName = c.getSimpleName();
 
+            if (constructor.getDeclaredAnnotation(NoArgConstructor.class) != null) {
+                builder.append(constructorModifier).append(" ").append(constructorName).append("() {}\n"); //create no arg constructor
+            } else {
+                ArrayList<String> paramTypes = new ArrayList<>();
+                ArrayList<String> paramNames = new ArrayList<>();
 
-        ArrayList<String> paramTypes = new ArrayList<>();
-        ArrayList<String> paramNames = new ArrayList<>();
+                //get the field names and types to later insert them in the all arg constructor
+                for (Field field: fields) {
+                    paramTypes.add(field.getType().getSimpleName());
+                    paramNames.add(field.getName());
+                }
 
-        //get the field names and types to later insert them in the all arg constructor
-        for (Field field: fields) {
-            paramTypes.add(field.getType().getSimpleName());
-            paramNames.add(field.getName());
-        }
+                //create the declaration of the all arg constructor
+                builder.append(constructorModifier).append(" ").append(constructorName).append("(");
+                for (int i = 0; i < paramTypes.size(); i++) {
+                    builder.append(paramTypes.get(i)).append(" ").append(paramNames.get(i));
+                    if (i!= paramTypes.size()-1) {
+                        builder.append(",");
+                    }
+                }
+                builder.append(") {\n");
 
-        //create the declaration of the constructor
-        builder.append(constructorModifier).append(" ").append(constructorName).append("(");
-        for (int i = 0; i < paramTypes.size(); i++) {
-            builder.append(paramTypes.get(i)).append(" ").append(paramNames.get(i));
-            if (i!= paramTypes.size()-1) {
-                builder.append(",");
+                //create the internal code of the constructor
+                for (String paramName: paramNames) {
+                    builder.append("\tthis.").append(paramName).append(" = ").append(paramName).append(";\n");
+                }
+                builder.append("}\n\n");
             }
         }
-        builder.append(") {\n");
-
-        //create the internal code of the constructor
-        for (String paramName: paramNames) {
-            builder.append("\tthis.").append(paramName).append(" = ").append(paramName).append(";\n");
-        }
-        builder.append("}\n\n");
     }
 
 
@@ -408,7 +414,7 @@ public class InjectionService {
             builder.append("\t\tpreparedStatement.setBoolean(1, ").append(parameterName).append(");");
         }
         builder.append("\n");
-        builder.append("\t\tint rowsAffected = preparedStatement.executeUpdate(deleteSQL);\n");
+        builder.append("\t\tint rowsAffected = preparedStatement.executeUpdate();\n");
         builder.append("""
                 \t\tpreparedStatement.close();
                 \t\tconnection.close();
@@ -431,7 +437,7 @@ public class InjectionService {
                 \ttry {
                 \t\tConnection connection = connect();
                 \t\tStatement statement = connection.createStatement();
-                \t\tString deleteSQL = "DELETE * FROM\s""").append(tableAnnotation.name()).append("\";\n");
+                \t\tString deleteSQL = "DELETE FROM\s""").append(tableAnnotation.name()).append("\";\n");
         builder.append("\n");
         builder.append("""
                 \t\tint rowsAffected = statement.executeUpdate(deleteSQL);
@@ -507,7 +513,6 @@ public class InjectionService {
         builder.append("""
                 \ttry {
                 \t\tConnection connection = connect();
-                \t\tStatement statement = connection.createStatement();
                 \t\tString selectSQL = "SELECT * FROM\s""").append(tableAnnotation.name()).append(" WHERE ");
                 int parameterCounter = 0; //the number of values to be added to the preparedStatement
                 for (Map.Entry<String,String> parameter: methodParameters.entrySet()) { //for each parameter add that param in the preparedStatement
@@ -530,7 +535,7 @@ public class InjectionService {
                     builder.append(parameterCounter).append(", ").append(parameterName).append(");\n");
                 }
         builder.append("\n");
-        builder.append("\t\tResultSet resultsFound = statement.executeQuery(selectSQL);");
+        builder.append("\t\tResultSet resultsFound = preparedStatement.executeQuery();");
         builder.append("""
             \n\t\tStudent selectedStudent = null;
             \t\twhile(resultsFound.next()) {
@@ -558,7 +563,7 @@ public class InjectionService {
 
         builder.append("""
                 \n\t\t}
-                \t\tstatement.close();
+                \t\tpreparedStatement.close();
                 \t\tconnection.close();
                 \t\treturn selectedStudent;
                 \t} catch (SQLException e) {
