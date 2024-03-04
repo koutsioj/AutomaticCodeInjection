@@ -100,16 +100,15 @@ public class InjectionService {
 
         importsSet.forEach(element -> builder.insert(0, element+"\n"));
         builder.append("\n}");
-        System.out.println(builder);
 
         createFile(builder.toString());
     }
 
     public void createFile(String builder) {
         try {
-            FileWriter myFile = new FileWriter("output.java");
-            myFile.write(builder);
-            myFile.close();
+            FileWriter outputFile = new FileWriter("output.java");
+            outputFile.write(builder);
+            outputFile.close();
             System.out.println("File created successfully");
         }catch (IOException e) {
             System.out.println("Unable to create file");
@@ -133,17 +132,20 @@ public class InjectionService {
         String name = dbAnnotation.name();
         String dbType = dbAnnotation.dbType();
 
-        builder.append("\tString dbName = \"").append(name).append("\";\n");
-
         //build connection string depending on dbType
         if (dbType.equalsIgnoreCase("sqlite")) {
+            builder.append("\tString dbName = \"").append(name).append("\";\n");
             builder.append("\tString connectionString = \"jdbc:sqlite:\"+dbName+\".db\"").append(";\n"); //SQLite
         }
         else if (dbType.equalsIgnoreCase("derby")) {
+            builder.append("\tString dbName = \"").append(name).append("\";\n");
             builder.append("\tString connectionString = \"jdbc:derby:\"+dbName+\";create=true\"").append(";\n"); //derby
         }
         else if (dbType.equalsIgnoreCase("h2")) {
-            builder.append("\tString connectionString = \"jdbc:h2:mem:\"+dbName").append(";\n"); //assuming the connection is to an in-memory db
+            importsSet.add("import java.io.File;"); //for File.separator
+            builder.append("\tString currentDirectory = System.getProperty(\"user.dir\");\n");
+            builder.append("\tString dbName = currentDirectory + File.separator + \"").append(name).append("\";\n");
+            builder.append("\tString connectionString = \"jdbc:h2:\"+dbName").append(";\n"); //assuming the connection is to an in-memory db
         } else {
             throw new IllegalArgumentException("Accepted values for 'dbType' annotation are : 'SQLITE', 'DERBY', 'H2'");
         }
@@ -167,14 +169,13 @@ public class InjectionService {
 
         StringBuilder tableBuilder = new StringBuilder();
         String className = c.getSimpleName();
-        //   String primaryKey = getPrimaryKey();
 
         builder.append("""
                 public static void createTableAndData(){
                 \ttry {
                 \t\tConnection connection = connect();
                 """);
-        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE IF NOT EXISTS ").append(className).append("\"\n\t\t + ");
+        builder.append("\n\t\tString createTableSQL = \"CREATE TABLE ").append(className).append("\"\n\t\t + ");
 
         tableBuilder.append("\"(");
         for (int i=0 ; i<fieldsAnnotations.size() ; i++) {
@@ -250,7 +251,8 @@ public class InjectionService {
         //get all declared constructors of the class
         Constructor<?>[] constructors = c.getDeclaredConstructors();
 
-        //return an optional constructor with a @FullArgConstructor annotation
+        //only keep the constructors that are annotated with the relevant annotations
+        //(we assume each of these annotations are used only up to 1 time)
         List<Constructor<?>> annotatedConstructors = Arrays.stream(constructors)
                 .filter(constructor -> (constructor.getDeclaredAnnotation(FullArgConstructor.class) != null) ||
                         constructor.getDeclaredAnnotation(NoArgConstructor.class) != null)
@@ -266,7 +268,7 @@ public class InjectionService {
 
             if (constructor.getDeclaredAnnotation(NoArgConstructor.class) != null) {
                 builder.append(constructorModifier).append(" ").append(constructorName).append("() {}\n"); //create no arg constructor
-            } else {
+            } else { //create full arg constructor
                 ArrayList<String> paramTypes = new ArrayList<>();
                 ArrayList<String> paramNames = new ArrayList<>();
 
@@ -326,15 +328,17 @@ public class InjectionService {
             //<-------------- create method definition
 
             //build method execution
-            if (dbMethodAnnotation.type().equalsIgnoreCase("InsertOne")) {
+            String dbMethodType = dbMethodAnnotation.type();
+
+            if (dbMethodType.equalsIgnoreCase("InsertOne")) {
                 buildInsertOne(builder, methodParameters);
-            } else if (dbMethodAnnotation.type().equalsIgnoreCase("SelectAll")) {
+            } else if (dbMethodType.equalsIgnoreCase("SelectAll")) {
                 buildSelectAll(builder);
-            } else if(dbMethodAnnotation.type().equalsIgnoreCase("SelectOne")) {
+            } else if(dbMethodType.equalsIgnoreCase("SelectOne")) {
                 buildSelectOne(builder, methodParameters);
-            } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteOne")) {
+            } else if (dbMethodType.equalsIgnoreCase("DeleteOne")) {
                 buildDeleteOne(builder, methodParameters);
-            } else if (dbMethodAnnotation.type().equalsIgnoreCase("DeleteAll")) {
+            } else if (dbMethodType.equalsIgnoreCase("DeleteAll")) {
                 buildDeleteAll(builder);
             }
         });
@@ -475,12 +479,14 @@ public class InjectionService {
                 \stemp = new\s""").append(c.getSimpleName()).append("(");
 
         Arrays.stream(fields).forEach(field -> {
+            String fieldType = field.getType().toString();
+
             builder.append("\n\t\t\t\tresultsFound");
-            if (field.getType().toString().endsWith("String")) {
+            if (fieldType.endsWith("String")) {
                 builder.append(".getString(\"");
-            } else if (field.getType().toString().equalsIgnoreCase("int")) {
+            } else if (fieldType.equalsIgnoreCase("int")) {
                 builder.append(".getInt(\"");
-            } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
+            } else if (fieldType.equalsIgnoreCase("boolean")) {
                 builder.append(".getBoolean(\"");
             }
             builder.append(field.getName()).append("\")");
@@ -543,12 +549,13 @@ public class InjectionService {
         builder.append("\sselectedStudent = new\s").append(c.getSimpleName()).append("(");
 
         Arrays.stream(fields).forEach(field -> {
+            String fieldType = field.getType().toString();
             builder.append("\n\t\t\tresultsFound");
-            if (field.getType().toString().endsWith("String")) {
+            if (fieldType.endsWith("String")) {
                 builder.append(".getString(\"");
-            } else if (field.getType().toString().equalsIgnoreCase("int")) {
+            } else if (fieldType.equalsIgnoreCase("int")) {
                 builder.append(".getInt(\"");
-            } else if (field.getType().toString().equalsIgnoreCase("boolean")) {
+            } else if (fieldType.equalsIgnoreCase("boolean")) {
                 builder.append(".getBoolean(\"");
             }
             builder.append(field.getName()).append("\")");

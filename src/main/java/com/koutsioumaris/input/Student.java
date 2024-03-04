@@ -3,12 +3,10 @@ package com.koutsioumaris.input;
 import com.koutsioumaris.annotations.*;
 
 import java.util.List;
-import java.util.Objects;
 
 //@Database(name="UnipiDB", dbType ="sqlite")
 //@Database(name="UnipiDB", dbType ="derby")
 @Database(name="UnipiDB", dbType ="h2")
-
 @Table(name="Student")
 public class Student {
     @PrimaryKey
@@ -23,10 +21,11 @@ public class Student {
     @DBField(name="PostGraduate",type="Boolean")
     boolean postGraduate;
 
-    @NoArgConstructor
+    @NoArgConstructor //not necessary
     public Student() {
     }
-    @FullArgConstructor
+
+    @FullArgConstructor //necessary for "select" methods
     public Student(String AM, String email,int yearOfStudies,String fullName,boolean postGraduate) {
     }
 
@@ -41,11 +40,13 @@ public class Student {
     public static List<Student> getAllStudents(){
         return null;
     }
+
     //Επιστρέφουμε τον μοναδικό μαθητή με το συγκεκριμένο ΑΦΜ
     @DBMethod(type="SelectOne")
     public static Student getOneStudent(@Param(name="AM") String AM){
         return null;
     }
+
     //Ο επιστρεφόμενος ακέραιος υποδηλώνει τον αριθμό των εγγραφών που διαγράφηκαν
     @DBMethod(type="DeleteOne")
     public static int deleteStudent(@Param(name="AM") String AM){
